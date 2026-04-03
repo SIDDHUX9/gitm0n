@@ -10,8 +10,8 @@ export const getCachedAnalysis = internalQuery({
       .unique();
 
     if (!analysis) return null;
-    // Cache for 1 hour
-    if (Date.now() - analysis.analyzedAt > 3600000) return null;
+    // Cache for 6 hours
+    if (Date.now() - analysis.analyzedAt > 21600000) return null;
     return analysis;
   },
 });

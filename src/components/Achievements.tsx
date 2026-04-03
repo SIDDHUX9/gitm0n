@@ -207,7 +207,8 @@ export default function Achievements({ data }: { data: AnalysisData }) {
   const totalXP = unlockedAchievements.reduce((s, a) => s + a.xp, 0);
   const { level, title, nextXP } = getLevelFromXP(totalXP);
   const prevLevelXP = getLevelFromXP(totalXP - 1).nextXP;
-  const xpProgress = ((totalXP - prevLevelXP) / (nextXP - prevLevelXP)) * 100;
+  const xpDenom = nextXP - prevLevelXP;
+  const xpProgress = xpDenom > 0 ? ((totalXP - prevLevelXP) / xpDenom) * 100 : 100;
 
   return (
     <div className="space-y-6">

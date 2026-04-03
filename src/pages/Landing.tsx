@@ -4,11 +4,28 @@ import { api } from "@/convex/_generated/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
-import CodeWorld from "@/components/CodeWorld";
+import CodeWorld, { type CodeWorldHandle } from "@/components/CodeWorld";
 import Leaderboard from "@/components/Leaderboard";
-import { Github, BarChart3, Globe, Zap, Lock, TrendingUp, ChevronDown, Users, Code2, Activity } from "lucide-react";
+import { Github, BarChart3, Globe, Zap, Lock, TrendingUp, ChevronDown, Users, Code2, Activity, Maximize2, Minimize2, Search, Linkedin, ExternalLink } from "lucide-react";
+
+const CREATOR_USERNAME = "SIDDHUX9";
 
 const DEMO_USERS = [
+  {
+    username: "SIDDHUX9",
+    avatarUrl: "https://avatars.githubusercontent.com/SIDDHUX9",
+    name: "Siddhu Singh",
+    totalLines: 320000,
+    percentileRank: 88,
+    isCreator: true,
+    languages: [
+      { name: "TypeScript", lines: 140000, percentage: 44, color: "#3178c6" },
+      { name: "JavaScript", lines: 80000, percentage: 25, color: "#f1e05a" },
+      { name: "Python", lines: 55000, percentage: 17, color: "#3572A5" },
+      { name: "CSS", lines: 30000, percentage: 9, color: "#563d7c" },
+      { name: "HTML", lines: 15000, percentage: 5, color: "#e34c26" },
+    ],
+  },
   {
     username: "torvalds",
     avatarUrl: "https://avatars.githubusercontent.com/u/1024025?v=4",
@@ -71,9 +88,9 @@ function HudPanel({ children, className = "" }: { children: React.ReactNode; cla
   return (
     <div className={`backdrop-blur-xl ${className}`}
       style={{
-        background: "rgba(8, 18, 10, 0.97)",
-        border: "1.5px solid rgba(0,255,65,0.55)",
-        boxShadow: "0 0 40px rgba(0,0,0,0.95), 0 0 20px rgba(0,255,65,0.12), inset 0 0 0 1px rgba(0,255,65,0.08)",
+        background: "rgba(0, 20, 8, 0.96)",
+        border: "2px solid #00ff41",
+        boxShadow: "0 0 0 1px rgba(0,255,65,0.15), 0 0 30px rgba(0,255,65,0.35), 0 8px 40px rgba(0,0,0,0.9)",
       }}>
       {children}
     </div>
@@ -93,6 +110,13 @@ function CornerBrackets({ color = "rgba(0,255,65,0.3)" }: { color?: string }) {
   );
 }
 
+// Social links for the creator
+const SOCIAL_LINKS = [
+  { href: "https://www.linkedin.com/in/siddhu-singh/", icon: Linkedin, label: "LinkedIn", color: "#0a66c2" },
+  { href: "https://github.com/SIDDHUX9", icon: Github, label: "GitHub", color: "#e6edf3" },
+  { href: "https://www.siddhu.info/", icon: ExternalLink, label: "Portfolio", color: "#00ff41" },
+];
+
 export default function Landing() {
   const [bootDone, setBootDone] = useState(false);
   const [bootLines, setBootLines] = useState<string[]>([]);
@@ -108,6 +132,11 @@ export default function Landing() {
   const [worldUserSelected, setWorldUserSelected] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
+  const codeWorldRef = useRef<CodeWorldHandle>(null);
+  const [worldSearch, setWorldSearch] = useState("");
+  const [worldSearchFocused, setWorldSearchFocused] = useState(false);
+  const [isWorldFullscreen, setIsWorldFullscreen] = useState(false);
+  const heroRef = useRef<HTMLDivElement>(null);
 
   // Typewriter
   const PHRASES = [
@@ -125,6 +154,33 @@ export default function Landing() {
   const [twDisplayed, setTwDisplayed] = useState("");
   const [twDeleting, setTwDeleting] = useState(false);
   const [twPaused, setTwPaused] = useState(false);
+
+  // Keyboard shortcut: press "/" to focus scan input
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT") {
+        e.preventDefault();
+        setActiveTab("scan");
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
+      if (e.key === "Escape" && activeTab === "world") {
+        setActiveTab("scan");
+        document.body.style.overflow = "";
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [activeTab]);
+
+  // Lock body scroll when world tab is active
+  useEffect(() => {
+    if (activeTab === "world") {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [activeTab]);
 
   useEffect(() => {
     if (twPaused) {
@@ -236,7 +292,10 @@ export default function Landing() {
       setIsAnalyzing(false);
       setProgress(0);
       if (err.message?.includes("USER_NOT_FOUND")) toast.error(`User '${target}' not found on GitHub`);
-      else if (err.message?.includes("RATE_LIMIT")) toast.error("GitHub API rate limit exceeded. Add a token for higher limits.");
+      else if (err.message?.includes("RATE_LIMIT")) {
+        const resetTime = err.message.split(":")[1];
+        toast.error(`GitHub rate limit hit. Resets at ${resetTime || "soon"}. Add a token in the "+ Token" field for 5,000 req/hr.`, { duration: 8000 });
+      }
       else toast.error(err.message || "Analysis failed");
       return;
     }
@@ -253,6 +312,38 @@ export default function Landing() {
   };
 
   const handleForceRefresh = () => handleAnalyze(username, true);
+
+  const worldSearchSuggestions = (codeWorldRef.current?.allUsers || []).filter(
+    (u) => worldSearch.trim() && u.username.toLowerCase().includes(worldSearch.toLowerCase())
+  ).slice(0, 5);
+
+  const handleWorldSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (worldSearch.trim()) {
+      codeWorldRef.current?.searchUser(worldSearch.trim());
+      setWorldSearchFocused(false);
+    }
+  };
+
+  const handleWorldSearchSelect = (username: string) => {
+    setWorldSearch(username);
+    setWorldSearchFocused(false);
+    codeWorldRef.current?.searchUser(username);
+  };
+
+  const toggleWorldFullscreen = () => {
+    if (!document.fullscreenElement) {
+      heroRef.current?.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  useEffect(() => {
+    const onFsChange = () => setIsWorldFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background font-mono overflow-x-hidden">
@@ -289,14 +380,30 @@ export default function Landing() {
                 <img src="/assets/gitm0n.jpg" alt="GITM0N" className="h-7 w-7 rounded object-cover" />
                 <span className="text-primary terminal-glow text-sm font-bold tracking-[0.2em]">GITM0N</span>
               </button>
-              <div className="flex gap-2 text-xs">
-                <button onClick={handleForceRefresh} disabled={isAnalyzing}
-                  className="text-muted-foreground hover:text-primary border border-border hover:border-primary/50 px-3 py-1.5 transition-all disabled:opacity-40">
-                  RESCAN
-                </button>
-                <button onClick={handleReset} className="text-primary-foreground bg-primary px-3 py-1.5 hover:bg-primary/90 transition-all font-bold">
-                  NEW SCAN
-                </button>
+              <div className="flex items-center gap-3">
+                {/* Social links */}
+                <div className="hidden sm:flex items-center gap-1.5">
+                  {SOCIAL_LINKS.map((s) => (
+                    <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer"
+                      title={s.label}
+                      className="w-7 h-7 flex items-center justify-center border border-border/40 hover:border-primary/50 transition-all hover:bg-primary/5"
+                      style={{ color: "rgba(255,255,255,0.4)" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = s.color)}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.4)")}
+                    >
+                      <s.icon size={12} />
+                    </a>
+                  ))}
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <button onClick={handleForceRefresh} disabled={isAnalyzing}
+                    className="text-muted-foreground hover:text-primary border border-border hover:border-primary/50 px-3 py-1.5 transition-all disabled:opacity-40">
+                    RESCAN
+                  </button>
+                  <button onClick={handleReset} className="text-primary-foreground bg-primary px-3 py-1.5 hover:bg-primary/90 transition-all font-bold">
+                    NEW SCAN
+                  </button>
+                </div>
               </div>
             </nav>
             <div className="max-w-6xl mx-auto px-4 py-8">
@@ -311,38 +418,42 @@ export default function Landing() {
             {/* ══════════════════════════════════════════
                 IMMERSIVE HERO — CodeWorld fills viewport
             ══════════════════════════════════════════ */}
-            <div className="relative w-full" style={{ height: "100vh", minHeight: 600 }}>
+            <div ref={heroRef} className="relative w-full" style={{ height: "100vh", minHeight: 600 }}>
 
               {/* CodeWorld fills the entire background */}
               <div className="absolute inset-0 z-0">
                 <CodeWorld
+                  ref={codeWorldRef}
                   leaderboardUsers={codeWorldUsers}
                   currentUser={codeWorldCurrentUser}
                   onUserSelect={(u) => setWorldUserSelected(u !== null)}
                 />
               </div>
 
-              {/* Vignette overlay — darkens edges for readability */}
+              {/* Vignette overlay */}
               <div className="absolute inset-0 z-10 pointer-events-none"
                 style={{ background: "radial-gradient(ellipse at center, transparent 30%, rgba(10,10,10,0.7) 100%)" }} />
-              {/* Bottom fade into content below */}
-              <div className="absolute bottom-0 left-0 right-0 h-32 z-10 pointer-events-none"
-                style={{ background: "linear-gradient(to bottom, transparent, #0a0a0a)" }} />
+              {/* Bottom fade — hidden when world tab active so world feels full */}
+              {activeTab !== "world" && (
+                <div className="absolute bottom-0 left-0 right-0 h-32 z-10 pointer-events-none"
+                  style={{ background: "linear-gradient(to bottom, transparent, #0a0a0a)" }} />
+              )}
 
               {/* ── TOP NAV (floating) ── */}
-              <nav className="absolute top-0 left-0 right-0 z-30 px-6 py-4 flex items-center justify-between">
+              <nav className="absolute top-0 left-0 right-0 z-30 px-4 py-3 flex items-center gap-3">
+                {/* Logo */}
                 <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
-                  className="flex items-center gap-3">
-                  <img src="/assets/gitm0n.jpg" alt="GITM0N" className="h-8 w-8 rounded object-cover border border-primary/30" />
-                  <div>
-                    <div className="text-primary terminal-glow font-black tracking-[0.2em] text-sm leading-none">GITM0N</div>
-                    <div className="text-muted-foreground text-[9px] tracking-widest mt-0.5">GITHUB CODE MONITOR</div>
+                  className="flex items-center gap-2 shrink-0">
+                  <img src="/assets/gitm0n.jpg" alt="GITM0N" className="h-7 w-7 rounded object-cover border border-primary/30" />
+                  <div className="hidden sm:block">
+                    <div className="text-primary terminal-glow font-black tracking-[0.2em] text-xs leading-none">GITM0N</div>
+                    <div className="text-muted-foreground text-[8px] tracking-widest mt-0.5">CODE MONITOR</div>
                   </div>
                 </motion.div>
 
+                {/* Tab switcher */}
                 <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
                   className="flex items-center gap-1">
-                  {/* Tab switcher */}
                   {[
                     { id: "scan" as const, label: "SCAN", icon: Code2 },
                     { id: "world" as const, label: "WORLD", icon: Globe },
@@ -351,23 +462,119 @@ export default function Landing() {
                     <button key={id} onClick={() => setActiveTab(id)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] tracking-widest transition-all border ${
                         activeTab === id
-                          ? "border-primary/60 text-primary bg-background/60 backdrop-blur-sm"
-                          : "border-transparent text-muted-foreground hover:text-primary hover:border-border/60"
-                      }`}>
+                          ? id === "world"
+                            ? "border-primary text-primary bg-primary/10 backdrop-blur-sm"
+                            : "border-primary/60 text-primary bg-background/60 backdrop-blur-sm"
+                          : id === "world"
+                            ? "border-primary/30 text-primary/70 hover:text-primary hover:border-primary/60 hover:bg-primary/5"
+                            : "border-transparent text-muted-foreground hover:text-primary hover:border-border/60"
+                      }`}
+                      style={id === "world" && activeTab !== "world" ? { boxShadow: "0 0 8px rgba(0,255,65,0.15)" } : undefined}
+                    >
                       <Icon size={10} />
                       {label}
                     </button>
                   ))}
+                </motion.div>
+
+                {/* World search — only visible on world tab */}
+                <AnimatePresence>
+                  {activeTab === "world" && (
+                    <motion.form
+                      key="world-search"
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: "auto" }}
+                      exit={{ opacity: 0, width: 0 }}
+                      transition={{ duration: 0.2 }}
+                      onSubmit={handleWorldSearch}
+                      className="relative flex-1 max-w-[200px]"
+                    >
+                      <div className="relative flex items-center">
+                        <Search size={10} className="absolute left-2 text-muted-foreground/50 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={worldSearch}
+                          onChange={(e) => { setWorldSearch(e.target.value); setWorldSearchFocused(true); }}
+                          onFocus={() => setWorldSearchFocused(true)}
+                          onBlur={() => setTimeout(() => setWorldSearchFocused(false), 150)}
+                          placeholder="find user..."
+                          className="w-full bg-black/70 border border-border/60 text-[10px] font-mono text-foreground placeholder:text-muted-foreground/40 pl-6 pr-2 py-1.5 focus:outline-none focus:border-primary/60 transition-colors backdrop-blur-sm"
+                        />
+                      </div>
+                      {worldSearchFocused && worldSearchSuggestions.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-0.5 bg-black/95 border border-border z-50">
+                          {worldSearchSuggestions.map((u) => (
+                            <button
+                              key={u.username}
+                              type="button"
+                              onMouseDown={() => handleWorldSearchSelect(u.username)}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-primary/10 transition-colors text-left"
+                            >
+                              <img src={u.avatarUrl} alt={u.username} className="w-4 h-4 rounded-sm shrink-0" />
+                              <span className="text-foreground">@{u.username}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </motion.form>
+                  )}
+                </AnimatePresence>
+
+                {/* Fullscreen button — only on world tab */}
+                <AnimatePresence>
+                  {activeTab === "world" && (
+                    <motion.button
+                      key="fullscreen-btn"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={toggleWorldFullscreen}
+                      className="shrink-0 flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/40 px-2 py-1.5 transition-all backdrop-blur-sm bg-black/40"
+                      title={isWorldFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                    >
+                      {isWorldFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+                      <span className="hidden sm:inline">{isWorldFullscreen ? "EXIT" : "FULL"}</span>
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+
+                {/* Social links — top right, always visible */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="ml-auto flex items-center gap-1 shrink-0"
+                >
+                  {SOCIAL_LINKS.map((s) => (
+                    <a
+                      key={s.label}
+                      href={s.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={s.label}
+                      className="w-7 h-7 flex items-center justify-center border border-transparent hover:border-primary/40 transition-all hover:bg-primary/5 backdrop-blur-sm"
+                      style={{ color: "rgba(255,255,255,0.35)" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = s.color; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
+                    >
+                      <s.icon size={13} />
+                    </a>
+                  ))}
+                  {/* Keyboard hint */}
+                  <div className="hidden lg:flex items-center gap-1 ml-2 text-[9px] text-muted-foreground/25 font-mono">
+                    <kbd className="border border-border/30 px-1 py-0.5 rounded-sm">/</kbd>
+                    <span>scan</span>
+                  </div>
                 </motion.div>
               </nav>
 
               {/* ── HERO COPY — top-left floating panel ── */}
               <motion.div
                 initial={{ opacity: 0, x: -24 }}
-                animate={{ opacity: worldUserSelected ? 0 : 1, x: worldUserSelected ? -24 : 0 }}
+                animate={{ opacity: worldUserSelected || activeTab === "world" ? 0 : 1, x: worldUserSelected || activeTab === "world" ? -24 : 0 }}
                 transition={{ duration: 0.3 }}
                 className="absolute left-6 top-1/2 -translate-y-1/2 z-20 max-w-sm hidden lg:block"
-                style={{ pointerEvents: worldUserSelected ? "none" : "auto" }}
+                style={{ pointerEvents: worldUserSelected || activeTab === "world" ? "none" : "auto" }}
               >
                 <div className="relative p-6">
                   <CornerBrackets />
@@ -394,13 +601,41 @@ export default function Landing() {
                       </div>
                     ))}
                   </div>
-                  <button
-                    onClick={() => { setActiveTab("scan"); inputRef.current?.focus(); }}
-                    className="w-full py-2.5 bg-primary text-primary-foreground text-xs font-black tracking-widest hover:bg-primary/90 transition-all"
-                    style={{ boxShadow: "0 0 20px rgba(0,255,65,0.3)" }}
-                  >
-                    START SCAN →
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setActiveTab("scan"); inputRef.current?.focus(); }}
+                      className="flex-1 py-2.5 bg-primary text-primary-foreground text-xs font-black tracking-widest hover:bg-primary/90 transition-all"
+                      style={{ boxShadow: "0 0 20px rgba(0,255,65,0.3)" }}
+                    >
+                      START SCAN →
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("world")}
+                      className="px-3 py-2.5 text-xs font-black tracking-widest transition-all border border-primary/40 text-primary hover:bg-primary/10"
+                      title="Enter CodeWorld"
+                    >
+                      <Globe size={14} />
+                    </button>
+                  </div>
+                  {/* Creator badge */}
+                  <div className="mt-4 flex items-center gap-2 pt-3 border-t border-border/30">
+                    <img src="https://avatars.githubusercontent.com/SIDDHUX9" alt="SIDDHUX9" className="w-5 h-5 rounded-sm" style={{ border: "1px solid rgba(255,180,0,0.6)" }} />
+                    <span className="text-[9px] text-muted-foreground/40">Built by</span>
+                    <a href="https://www.siddhu.info/" target="_blank" rel="noopener noreferrer"
+                      className="text-[9px] font-bold transition-colors hover:text-primary"
+                      style={{ color: "rgba(255,180,0,0.7)" }}>
+                      @SIDDHUX9
+                    </a>
+                    <div className="flex items-center gap-1 ml-auto">
+                      {SOCIAL_LINKS.map((s) => (
+                        <a key={s.label} href={s.href} target="_blank" rel="noopener noreferrer"
+                          className="opacity-30 hover:opacity-80 transition-opacity"
+                          style={{ color: s.color }}>
+                          <s.icon size={10} />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </motion.div>
 
@@ -418,22 +653,22 @@ export default function Landing() {
                     <HudPanel className="overflow-hidden">
                       <CornerBrackets color="rgba(0,255,65,0.5)" />
                       {/* Panel header */}
-                      <div className="flex items-center gap-1.5 px-4 py-2.5 border-b" style={{ borderColor: "rgba(0,255,65,0.3)", background: "rgba(0,255,65,0.06)" }}>
-                        <div className="w-2 h-2 rounded-full bg-red-500/80" />
-                        <div className="w-2 h-2 rounded-full bg-yellow-400/80" />
-                        <div className="w-2 h-2 rounded-full bg-primary/80" />
-                        <span className="text-[10px] ml-2 tracking-wider font-bold" style={{ color: "rgba(0,255,65,0.7)" }}>gitm0n — bash</span>
+                      <div className="flex items-center gap-1.5 px-4 py-2.5 border-b" style={{ borderColor: "#00ff41", background: "rgba(0,255,65,0.12)" }}>
+                        <div className="w-2 h-2 rounded-full bg-red-500" />
+                        <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                        <div className="w-2 h-2 rounded-full" style={{ background: "#00ff41" }} />
+                        <span className="text-[10px] ml-2 tracking-wider font-bold" style={{ color: "#00ff41" }}>gitm0n — bash</span>
                         <div className="ml-auto flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                          <span className="text-[9px] font-bold" style={{ color: "rgba(0,255,65,0.8)" }}>LIVE</span>
+                          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#00ff41" }} />
+                          <span className="text-[9px] font-bold" style={{ color: "#00ff41" }}>LIVE</span>
                         </div>
                       </div>
 
                       {/* Input row */}
                       <div className="flex items-center gap-2 px-4 py-4">
-                        <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.4, repeat: Infinity }}
-                          className="text-primary text-sm shrink-0 font-bold select-none">$</motion.span>
-                        <span className="text-sm shrink-0 font-mono select-none" style={{ color: "rgba(0,255,65,0.55)" }}>gitm0n scan</span>
+                        <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1.4, repeat: Infinity }}
+                          className="text-sm shrink-0 font-bold select-none" style={{ color: "#00ff41" }}>$</motion.span>
+                        <span className="text-sm shrink-0 font-mono select-none font-bold" style={{ color: "rgba(0,255,65,0.75)" }}>gitm0n scan</span>
                         <input
                           ref={inputRef}
                           type="text"
@@ -442,8 +677,8 @@ export default function Landing() {
                           onKeyDown={(e) => e.key === "Enter" && !isAnalyzing && handleAnalyze()}
                           placeholder="github-username"
                           disabled={isAnalyzing}
-                          className="flex-1 bg-transparent text-primary outline-none text-sm font-mono min-w-0 caret-primary"
-                          style={{ "--tw-placeholder-color": "rgba(0,255,65,0.3)" } as any}
+                          className="flex-1 bg-transparent outline-none text-sm font-mono min-w-0"
+                          style={{ color: "#00ff41", caretColor: "#00ff41" }}
                           autoFocus
                         />
                         <AnimatePresence>
@@ -456,6 +691,26 @@ export default function Landing() {
                             >RUN →</motion.button>
                           )}
                         </AnimatePresence>
+                      </div>
+
+                      {/* Quick scan SIDDHUX9 */}
+                      <div className="px-4 pb-2 flex items-center gap-2">
+                        <span className="text-[9px] text-muted-foreground/30">Try:</span>
+                        {["SIDDHUX9", "torvalds", "gaearon"].map((u) => (
+                          <button
+                            key={u}
+                            onClick={() => { setUsername(u); setTimeout(() => handleAnalyze(u), 50); }}
+                            disabled={isAnalyzing}
+                            className="text-[9px] font-mono px-2 py-0.5 border transition-all disabled:opacity-30"
+                            style={u === "SIDDHUX9"
+                              ? { borderColor: "rgba(255,180,0,0.5)", color: "rgba(255,180,0,0.8)", background: "rgba(255,180,0,0.05)" }
+                              : { borderColor: "rgba(0,255,65,0.2)", color: "rgba(0,255,65,0.5)" }
+                            }
+                            onMouseEnter={(e) => { if (!isAnalyzing) e.currentTarget.style.opacity = "1"; }}
+                          >
+                            {u === "SIDDHUX9" ? "★ " : ""}{u}
+                          </button>
+                        ))}
                       </div>
 
                       {/* Token row */}
@@ -509,7 +764,7 @@ export default function Landing() {
                         </button>
                       </div>
 
-                      <div className="px-4 pb-3 text-center text-[9px] tracking-wide" style={{ color: "rgba(0,255,65,0.45)" }}>
+                      <div className="px-4 pb-3 text-center text-[9px] tracking-wide font-bold" style={{ color: "rgba(0,255,65,0.7)" }}>
                         Enter · Cached 1hr · Token = 5,000 req/hr
                       </div>
                     </HudPanel>
@@ -542,18 +797,29 @@ export default function Landing() {
                         ) : (
                           <div className="space-y-2">
                             {DEMO_USERS.map((u, i) => (
-                              <div key={u.username} className="flex items-center gap-3 p-2 border border-border/30 bg-muted/10">
+                              <div key={u.username} className="flex items-center gap-3 p-2 border transition-colors"
+                                style={u.username === CREATOR_USERNAME
+                                  ? { borderColor: "rgba(255,180,0,0.4)", background: "rgba(255,180,0,0.04)" }
+                                  : { borderColor: "rgba(255,255,255,0.06)", background: "transparent" }
+                                }>
                                 <span className="text-muted-foreground/40 text-xs w-5 text-center font-bold">#{i + 1}</span>
-                                <img src={u.avatarUrl} alt={u.username} className="w-7 h-7 rounded-sm grayscale opacity-60" />
+                                <img src={u.avatarUrl} alt={u.username} className="w-7 h-7 rounded-sm"
+                                  style={u.username === CREATOR_USERNAME ? { border: "1px solid rgba(255,180,0,0.6)", opacity: 1 } : { opacity: 0.6, filter: "grayscale(1)" }} />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-xs text-primary/70 font-bold truncate">@{u.username}</div>
+                                  <div className="text-xs font-bold truncate flex items-center gap-1"
+                                    style={{ color: u.username === CREATOR_USERNAME ? "rgba(255,180,0,0.9)" : "rgba(0,255,65,0.7)" }}>
+                                    {u.username === CREATOR_USERNAME && <span className="text-[8px]">★</span>}
+                                    @{u.username}
+                                  </div>
                                   <div className="flex gap-1 mt-0.5">
                                     {u.languages.slice(0, 4).map((l) => (
                                       <div key={l.name} className="w-1.5 h-1.5 rounded-full opacity-60" style={{ backgroundColor: l.color }} />
                                     ))}
                                   </div>
                                 </div>
-                                <div className="text-xs font-bold text-muted-foreground/60">{formatNumber(u.totalLines)}</div>
+                                <div className="text-xs font-bold" style={{ color: u.username === CREATOR_USERNAME ? "rgba(255,180,0,0.7)" : "rgba(255,255,255,0.4)" }}>
+                                  {formatNumber(u.totalLines)}
+                                </div>
                               </div>
                             ))}
                             <div className="text-center text-[9px] text-muted-foreground/30 pt-2">Demo data · Scan to join</div>
@@ -587,8 +853,26 @@ export default function Landing() {
                         {codeWorldUsers.slice(0, 4).map((u: any) => (
                           <div key={u.username} className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: u.languages[0]?.color || "#00ff41" }} />
-                            <span className="text-[10px] text-muted-foreground/70">@{u.username}</span>
+                            <span className="text-[10px] text-muted-foreground/70"
+                              style={u.username === CREATOR_USERNAME ? { color: "rgba(255,180,0,0.8)", fontWeight: "bold" } : {}}>
+                              {u.username === CREATOR_USERNAME ? "★ " : ""}@{u.username}
+                            </span>
                             <span className="text-[10px] text-primary/60 ml-auto">{formatNumber(u.totalLines)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Controls hint */}
+                      <div className="mt-3 pt-3 border-t border-border/30 space-y-1">
+                        <div className="text-[9px] text-muted-foreground/30 tracking-widest">CONTROLS</div>
+                        {[
+                          ["Drag", "Rotate"],
+                          ["Scroll", "Zoom"],
+                          ["Click", "Inspect"],
+                          ["Esc", "Exit world"],
+                        ].map(([k, v]) => (
+                          <div key={k} className="flex items-center justify-between text-[9px]">
+                            <kbd className="border border-border/30 px-1 py-0.5 text-muted-foreground/40 rounded-sm">{k}</kbd>
+                            <span className="text-muted-foreground/30">{v}</span>
                           </div>
                         ))}
                       </div>
@@ -610,13 +894,21 @@ export default function Landing() {
                   <div className="text-primary terminal-glow font-black text-lg min-h-[1.3em]">
                     {twDisplayed}<span className="animate-pulse">█</span>
                   </div>
-                  <button
-                    onClick={() => { setActiveTab("scan"); inputRef.current?.focus(); }}
-                    className="mt-3 px-6 py-2.5 bg-primary text-primary-foreground text-xs font-black tracking-widest hover:bg-primary/90 transition-all"
-                    style={{ boxShadow: "0 0 20px rgba(0,255,65,0.3)" }}
-                  >
-                    START SCAN →
-                  </button>
+                  <div className="flex gap-2 mt-3 justify-center">
+                    <button
+                      onClick={() => { setActiveTab("scan"); inputRef.current?.focus(); }}
+                      className="px-6 py-2.5 bg-primary text-primary-foreground text-xs font-black tracking-widest hover:bg-primary/90 transition-all"
+                      style={{ boxShadow: "0 0 20px rgba(0,255,65,0.3)" }}
+                    >
+                      START SCAN →
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("world")}
+                      className="px-3 py-2.5 text-xs font-black border border-primary/40 text-primary hover:bg-primary/10 transition-all"
+                    >
+                      <Globe size={14} />
+                    </button>
+                  </div>
                 </div>
               </motion.div>
 
@@ -627,17 +919,53 @@ export default function Landing() {
                 <div>MODE: LIVE</div>
               </div>
 
-              {/* ── SCROLL HINT ── */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.2 }}
-                className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 hidden lg:flex flex-col items-center gap-1 text-muted-foreground/20 hover:text-muted-foreground/50 transition-colors cursor-pointer"
-                onClick={() => featuresRef.current?.scrollIntoView({ behavior: "smooth" })}
-              >
-                <span className="text-[9px] tracking-[0.3em]">SCROLL</span>
-                <ChevronDown size={12} className="animate-bounce" />
-              </motion.div>
+              {/* ── SCROLL HINT (non-world) ── */}
+              {activeTab !== "world" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.2 }}
+                  className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 hidden lg:flex flex-col items-center gap-1 text-muted-foreground/20 hover:text-muted-foreground/50 transition-colors cursor-pointer"
+                  onClick={() => featuresRef.current?.scrollIntoView({ behavior: "smooth" })}
+                >
+                  <span className="text-[9px] tracking-[0.3em]">SCROLL</span>
+                  <ChevronDown size={12} className="animate-bounce" />
+                </motion.div>
+              )}
+
+              {/* ── WORLD MODE: EXIT BUTTON at bottom ── */}
+              <AnimatePresence>
+                {activeTab === "world" && (
+                  <motion.div
+                    key="world-exit"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    transition={{ duration: 0.3, delay: 0.2 }}
+                    className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2"
+                  >
+                    <div className="text-[10px] font-mono tracking-[0.25em] font-bold" style={{ color: "rgba(0,255,65,0.6)", textShadow: "0 0 8px rgba(0,255,65,0.4)" }}>DRAG · SCROLL TO ZOOM</div>
+                    <button
+                      onClick={() => {
+                        setActiveTab("scan");
+                        document.body.style.overflow = "";
+                        featuresRef.current?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="flex items-center gap-2 px-6 py-3 text-sm font-mono font-black tracking-widest transition-all"
+                      style={{
+                        background: "rgba(0, 20, 8, 0.95)",
+                        border: "2px solid #00ff41",
+                        color: "#00ff41",
+                        boxShadow: "0 0 0 1px rgba(0,255,65,0.2), 0 0 24px rgba(0,255,65,0.4), 0 4px 20px rgba(0,0,0,0.8)",
+                        textShadow: "0 0 8px rgba(0,255,65,0.6)",
+                      }}
+                    >
+                      <ChevronDown size={14} className="animate-bounce" />
+                      EXIT WORLD ↓
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* ══════════════════════════════════════════
