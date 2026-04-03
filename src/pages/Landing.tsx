@@ -469,7 +469,10 @@ export default function Landing() {
                   ref={codeWorldRef}
                   leaderboardUsers={codeWorldUsers}
                   currentUser={codeWorldCurrentUser}
-                  onUserSelect={(u) => setWorldUserSelected(u !== null)}
+                  onUserSelect={(u) => {
+                    setWorldUserSelected(u !== null);
+                    if (u !== null) setActiveTab("world");
+                  }}
                 />
               </div>
 
@@ -515,7 +518,7 @@ export default function Landing() {
                       style={id === "world" && activeTab !== "world" ? { boxShadow: "0 0 8px rgba(0,255,65,0.15)" } : undefined}
                     >
                       <Icon size={9} />
-                      <span className="hidden xs:inline sm:inline">{label}</span>
+                      <span className={id === "world" ? "inline" : "hidden xs:inline sm:inline"}>{label}</span>
                     </button>
                   ))}
                 </motion.div>
@@ -949,16 +952,16 @@ export default function Landing() {
                           animate={{ opacity: 1, height: "auto" }}
                           exit={{ opacity: 0, height: 0 }}
                           transition={{ duration: 0.25 }}
-                          className="w-full flex items-center justify-center gap-3 px-4 py-2"
-                          style={{ background: "rgba(0,10,4,0.88)", backdropFilter: "blur(10px)", borderTop: "1px solid rgba(0,255,65,0.2)" }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5"
+                          style={{ background: "rgba(0,8,3,0.95)", backdropFilter: "blur(12px)", borderTop: "1px solid rgba(0,255,65,0.35)" }}
                         >
-                          <span className="text-[11px] text-center font-mono flex-1" style={{ color: "rgba(0,255,65,0.75)" }}>
+                          <span className="text-xs text-center font-mono flex-1 leading-relaxed" style={{ color: "#00ff41", textShadow: "0 0 6px rgba(0,255,65,0.4)" }}>
                             Each building represents a developer. Height = total LOC. Colors = primary language. Rotate and explore the city.
                           </span>
                           <button
                             onClick={() => setWorldPanelHidden(true)}
-                            className="shrink-0 w-5 h-5 flex items-center justify-center text-[10px] font-bold transition-colors hover:text-primary"
-                            style={{ color: "rgba(0,255,65,0.35)" }}
+                            className="shrink-0 w-6 h-6 flex items-center justify-center text-xs font-bold transition-colors"
+                            style={{ color: "rgba(0,255,65,0.5)", border: "1px solid rgba(0,255,65,0.25)" }}
                             title="Dismiss"
                           >✕</button>
                         </motion.div>
