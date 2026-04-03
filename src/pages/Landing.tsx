@@ -84,13 +84,14 @@ const FEATURES = [
 ];
 
 // Floating HUD panel component
-function HudPanel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function HudPanel({ children, className = "", style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
   return (
     <div className={`backdrop-blur-xl ${className}`}
       style={{
         background: "rgba(0, 20, 8, 0.96)",
         border: "2px solid #00ff41",
         boxShadow: "0 0 0 1px rgba(0,255,65,0.15), 0 0 30px rgba(0,255,65,0.35), 0 8px 40px rgba(0,0,0,0.9)",
+        ...style,
       }}>
       {children}
     </div>
@@ -107,6 +108,45 @@ function CornerBrackets({ color = "rgba(0,255,65,0.3)" }: { color?: string }) {
       <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l" style={s} />
       <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r" style={s} />
     </>
+  );
+}
+
+// Controls hint shown for 2s when entering world mode
+function WorldControlsHint({ active }: { active: boolean }) {
+  const [visible, setVisible] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (active) {
+      setVisible(true);
+      timerRef.current = setTimeout(() => setVisible(false), 2000);
+    } else {
+      setVisible(false);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [active]);
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          key="world-controls"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+          className="absolute z-30 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 pointer-events-none"
+          style={{ background: "rgba(0,10,4,0.7)", backdropFilter: "blur(8px)", border: "1px solid rgba(0,255,65,0.15)", padding: "10px 20px" }}
+        >
+          {[["Drag","Rotate"],["Scroll","Zoom"],["Tap","Inspect"],["Esc","Exit"]].map(([k, v]) => (
+            <span key={k} className="text-[10px] font-mono" style={{ color: "rgba(0,255,65,0.5)" }}>
+              <span style={{ color: "rgba(0,255,65,0.8)" }}>{k}</span> {v}
+            </span>
+          ))}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -130,6 +170,8 @@ export default function Landing() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [activeTab, setActiveTab] = useState<"scan" | "world" | "board">("scan");
   const [worldUserSelected, setWorldUserSelected] = useState(false);
+  const [worldPanelHidden, setWorldPanelHidden] = useState(false);
+  const [boardPanelHidden, setBoardPanelHidden] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const featuresRef = useRef<HTMLDivElement>(null);
   const codeWorldRef = useRef<CodeWorldHandle>(null);
@@ -172,10 +214,11 @@ export default function Landing() {
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
 
-  // Lock body scroll when world tab is active
+  // Lock body scroll when world tab is active; reset info bar when entering world
   useEffect(() => {
     if (activeTab === "world") {
       document.body.style.overflow = "hidden";
+      setWorldPanelHidden(false);
     } else {
       document.body.style.overflow = "";
     }
@@ -375,12 +418,12 @@ export default function Landing() {
         ) : analysisData ? (
           /* ── DASHBOARD ── */
           <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
-            <nav className="border-b border-border px-6 py-3 flex items-center justify-between sticky top-0 z-50 bg-background/98 backdrop-blur-sm">
+            <nav className="border-b border-border px-4 py-3 flex items-center justify-between sticky top-0 z-50 bg-background/98 backdrop-blur-sm">
               <button onClick={handleReset} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                 <img src="/assets/gitm0n.jpg" alt="GITM0N" className="h-7 w-7 rounded object-cover" />
                 <span className="text-primary terminal-glow text-sm font-bold tracking-[0.2em]">GITM0N</span>
               </button>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 {/* Social links */}
                 <div className="hidden sm:flex items-center gap-1.5">
                   {SOCIAL_LINKS.map((s) => (
@@ -395,18 +438,18 @@ export default function Landing() {
                     </a>
                   ))}
                 </div>
-                <div className="flex gap-2 text-xs">
+                <div className="flex gap-1.5 text-xs">
                   <button onClick={handleForceRefresh} disabled={isAnalyzing}
-                    className="text-muted-foreground hover:text-primary border border-border hover:border-primary/50 px-3 py-1.5 transition-all disabled:opacity-40">
+                    className="text-muted-foreground hover:text-primary border border-border hover:border-primary/50 px-2 py-1.5 transition-all disabled:opacity-40 text-[10px]">
                     RESCAN
                   </button>
-                  <button onClick={handleReset} className="text-primary-foreground bg-primary px-3 py-1.5 hover:bg-primary/90 transition-all font-bold">
+                  <button onClick={handleReset} className="text-primary-foreground bg-primary px-2 py-1.5 hover:bg-primary/90 transition-all font-bold text-[10px]">
                     NEW SCAN
                   </button>
                 </div>
               </div>
             </nav>
-            <div className="max-w-6xl mx-auto px-4 py-8">
+            <div className="max-w-6xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
               <AnalysisDashboard data={analysisData} onReset={handleReset} onRescan={handleForceRefresh} isRescanning={isAnalyzing} />
             </div>
           </motion.div>
@@ -418,7 +461,7 @@ export default function Landing() {
             {/* ══════════════════════════════════════════
                 IMMERSIVE HERO — CodeWorld fills viewport
             ══════════════════════════════════════════ */}
-            <div ref={heroRef} className="relative w-full" style={{ height: "100vh", minHeight: 600 }}>
+            <div ref={heroRef} className="relative w-full" style={{ height: "100vh", minHeight: 560 }}>
 
               {/* CodeWorld fills the entire background */}
               <div className="absolute inset-0 z-0">
@@ -433,14 +476,14 @@ export default function Landing() {
               {/* Vignette overlay */}
               <div className="absolute inset-0 z-10 pointer-events-none"
                 style={{ background: "radial-gradient(ellipse at center, transparent 30%, rgba(10,10,10,0.7) 100%)" }} />
-              {/* Bottom fade — hidden when world tab active so world feels full */}
+              {/* Bottom fade */}
               {activeTab !== "world" && (
                 <div className="absolute bottom-0 left-0 right-0 h-32 z-10 pointer-events-none"
                   style={{ background: "linear-gradient(to bottom, transparent, #0a0a0a)" }} />
               )}
 
               {/* ── TOP NAV (floating) ── */}
-              <nav className="absolute top-0 left-0 right-0 z-30 px-4 py-3 flex items-center gap-3">
+              <nav className="absolute top-0 left-0 right-0 z-30 px-3 sm:px-4 py-3 flex items-center gap-2">
                 {/* Logo */}
                 <motion.div initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
                   className="flex items-center gap-2 shrink-0">
@@ -453,14 +496,14 @@ export default function Landing() {
 
                 {/* Tab switcher */}
                 <motion.div initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}
-                  className="flex items-center gap-1">
+                  className="flex items-center gap-0.5 sm:gap-1">
                   {[
                     { id: "scan" as const, label: "SCAN", icon: Code2 },
                     { id: "world" as const, label: "WORLD", icon: Globe },
                     { id: "board" as const, label: "BOARD", icon: Users },
                   ].map(({ id, label, icon: Icon }) => (
                     <button key={id} onClick={() => setActiveTab(id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] tracking-widest transition-all border ${
+                      className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 text-[9px] sm:text-[10px] tracking-widest transition-all border ${
                         activeTab === id
                           ? id === "world"
                             ? "border-primary text-primary bg-primary/10 backdrop-blur-sm"
@@ -471,8 +514,8 @@ export default function Landing() {
                       }`}
                       style={id === "world" && activeTab !== "world" ? { boxShadow: "0 0 8px rgba(0,255,65,0.15)" } : undefined}
                     >
-                      <Icon size={10} />
-                      {label}
+                      <Icon size={9} />
+                      <span className="hidden xs:inline sm:inline">{label}</span>
                     </button>
                   ))}
                 </motion.div>
@@ -487,7 +530,7 @@ export default function Landing() {
                       exit={{ opacity: 0, width: 0 }}
                       transition={{ duration: 0.2 }}
                       onSubmit={handleWorldSearch}
-                      className="relative flex-1 max-w-[200px]"
+                      className="relative flex-1 max-w-[160px] sm:max-w-[200px]"
                     >
                       <div className="relative flex items-center">
                         <Search size={10} className="absolute left-2 text-muted-foreground/50 pointer-events-none" />
@@ -520,7 +563,7 @@ export default function Landing() {
                   )}
                 </AnimatePresence>
 
-                {/* Fullscreen button — only on world tab */}
+                {/* Fullscreen button — only on world tab, hidden on mobile */}
                 <AnimatePresence>
                   {activeTab === "world" && (
                     <motion.button
@@ -529,7 +572,7 @@ export default function Landing() {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       onClick={toggleWorldFullscreen}
-                      className="shrink-0 flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/40 px-2 py-1.5 transition-all backdrop-blur-sm bg-black/40"
+                      className="hidden sm:flex shrink-0 items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/40 px-2 py-1.5 transition-all backdrop-blur-sm bg-black/40"
                       title={isWorldFullscreen ? "Exit fullscreen" : "Fullscreen"}
                     >
                       {isWorldFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
@@ -538,7 +581,7 @@ export default function Landing() {
                   )}
                 </AnimatePresence>
 
-                {/* Social links — top right, always visible */}
+                {/* Social links — top right */}
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -560,7 +603,7 @@ export default function Landing() {
                       <s.icon size={13} />
                     </a>
                   ))}
-                  {/* Keyboard hint */}
+                  {/* Keyboard hint — desktop only */}
                   <div className="hidden lg:flex items-center gap-1 ml-2 text-[9px] text-muted-foreground/25 font-mono">
                     <kbd className="border border-border/30 px-1 py-0.5 rounded-sm">/</kbd>
                     <span>scan</span>
@@ -568,7 +611,7 @@ export default function Landing() {
                 </motion.div>
               </nav>
 
-              {/* ── HERO COPY — top-left floating panel ── */}
+              {/* ── HERO COPY — desktop: top-left floating panel, mobile: hidden (shown below) ── */}
               <motion.div
                 initial={{ opacity: 0, x: -24 }}
                 animate={{ opacity: worldUserSelected || activeTab === "world" ? 0 : 1, x: worldUserSelected || activeTab === "world" ? -24 : 0 }}
@@ -639,16 +682,18 @@ export default function Landing() {
                 </div>
               </motion.div>
 
-              {/* ── SCAN PANEL — right side floating terminal ── */}
+              {/* ── SCAN PANEL — desktop: right side; mobile: bottom-center ── */}
               <AnimatePresence>
                 {activeTab === "scan" && (
                   <motion.div
                     key="scan-panel"
-                    initial={{ opacity: 0, x: 32 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 32 }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.35 }}
-                    className="absolute right-6 top-1/2 -translate-y-1/2 z-20 w-full max-w-sm"
+                    className="absolute z-20 w-full px-3 sm:px-0
+                      bottom-4 left-0 right-0
+                      sm:bottom-auto sm:left-auto sm:right-6 sm:top-1/2 sm:-translate-y-1/2 sm:max-w-sm sm:w-auto"
                   >
                     <HudPanel className="overflow-hidden">
                       <CornerBrackets color="rgba(0,255,65,0.5)" />
@@ -664,11 +709,19 @@ export default function Landing() {
                         </div>
                       </div>
 
+                      {/* Mobile hero headline — only on mobile */}
+                      <div className="lg:hidden px-4 pt-3 pb-1">
+                        <div className="text-sm font-black text-foreground leading-tight">How much code</div>
+                        <div className="text-primary terminal-glow font-black text-sm min-h-[1.2em]">
+                          {twDisplayed}<span className="animate-pulse">█</span>
+                        </div>
+                      </div>
+
                       {/* Input row */}
-                      <div className="flex items-center gap-2 px-4 py-4">
+                      <div className="flex items-center gap-2 px-4 py-3">
                         <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1.4, repeat: Infinity }}
                           className="text-sm shrink-0 font-bold select-none" style={{ color: "#00ff41" }}>$</motion.span>
-                        <span className="text-sm shrink-0 font-mono select-none font-bold" style={{ color: "rgba(0,255,65,0.75)" }}>gitm0n scan</span>
+                        <span className="text-sm shrink-0 font-mono select-none font-bold hidden sm:inline" style={{ color: "rgba(0,255,65,0.75)" }}>gitm0n scan</span>
                         <input
                           ref={inputRef}
                           type="text"
@@ -693,8 +746,8 @@ export default function Landing() {
                         </AnimatePresence>
                       </div>
 
-                      {/* Quick scan SIDDHUX9 */}
-                      <div className="px-4 pb-2 flex items-center gap-2">
+                      {/* Quick scan */}
+                      <div className="px-4 pb-2 flex items-center gap-2 flex-wrap">
                         <span className="text-[9px] text-muted-foreground/30">Try:</span>
                         {["SIDDHUX9", "torvalds", "gaearon"].map((u) => (
                           <button
@@ -706,7 +759,6 @@ export default function Landing() {
                               ? { borderColor: "rgba(255,180,0,0.5)", color: "rgba(255,180,0,0.8)", background: "rgba(255,180,0,0.05)" }
                               : { borderColor: "rgba(0,255,65,0.2)", color: "rgba(0,255,65,0.5)" }
                             }
-                            onMouseEnter={(e) => { if (!isAnalyzing) e.currentTarget.style.opacity = "1"; }}
                           >
                             {u === "SIDDHUX9" ? "★ " : ""}{u}
                           </button>
@@ -772,18 +824,20 @@ export default function Landing() {
                 )}
               </AnimatePresence>
 
-              {/* ── LEADERBOARD PANEL — slides in from right ── */}
+              {/* ── LEADERBOARD PANEL — desktop: right side; mobile: bottom overlay ── */}
               <AnimatePresence>
                 {activeTab === "board" && (
                   <motion.div
                     key="board-panel"
-                    initial={{ opacity: 0, x: 32 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 32 }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.35 }}
-                    className="absolute right-6 top-20 bottom-6 z-20 w-full max-w-sm overflow-hidden"
+                    className="absolute z-20 w-full px-3
+                      bottom-0 left-0 right-0 max-h-[60vh]
+                      sm:bottom-auto sm:left-auto sm:right-6 sm:top-20 sm:bottom-6 sm:w-auto sm:max-w-sm sm:max-h-none sm:px-0 overflow-hidden"
                   >
-                    <HudPanel className="h-full flex flex-col overflow-hidden">
+                    <HudPanel className="h-full flex flex-col overflow-hidden" style={{ maxHeight: "inherit" }}>
                       <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 shrink-0">
                         <div className="flex items-center gap-2">
                           <Users size={12} className="text-primary" />
@@ -831,95 +885,17 @@ export default function Landing() {
                 )}
               </AnimatePresence>
 
-              {/* ── WORLD INFO PANEL ── */}
-              <AnimatePresence>
-                {activeTab === "world" && (
-                  <motion.div
-                    key="world-panel"
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 12 }}
-                    transition={{ duration: 0.3 }}
-                    className="absolute right-6 top-20 z-20 w-full max-w-xs"
-                  >
-                    <HudPanel className="p-4">
-                      <CornerBrackets />
-                      <div className="text-[9px] text-primary/50 tracking-[0.3em] mb-3">// CODEWORLD</div>
-                      <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-                        Each building represents a developer. Height = total LOC. Colors = primary language.
-                        Rotate and explore the city.
-                      </p>
-                      <div className="space-y-1.5">
-                        {codeWorldUsers.slice(0, 4).map((u: any) => (
-                          <div key={u.username} className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: u.languages[0]?.color || "#00ff41" }} />
-                            <span className="text-[10px] text-muted-foreground/70"
-                              style={u.username === CREATOR_USERNAME ? { color: "rgba(255,180,0,0.8)", fontWeight: "bold" } : {}}>
-                              {u.username === CREATOR_USERNAME ? "★ " : ""}@{u.username}
-                            </span>
-                            <span className="text-[10px] text-primary/60 ml-auto">{formatNumber(u.totalLines)}</span>
-                          </div>
-                        ))}
-                      </div>
-                      {/* Controls hint */}
-                      <div className="mt-3 pt-3 border-t border-border/30 space-y-1">
-                        <div className="text-[9px] text-muted-foreground/30 tracking-widest">CONTROLS</div>
-                        {[
-                          ["Drag", "Rotate"],
-                          ["Scroll", "Zoom"],
-                          ["Click", "Inspect"],
-                          ["Esc", "Exit world"],
-                        ].map(([k, v]) => (
-                          <div key={k} className="flex items-center justify-between text-[9px]">
-                            <kbd className="border border-border/30 px-1 py-0.5 text-muted-foreground/40 rounded-sm">{k}</kbd>
-                            <span className="text-muted-foreground/30">{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </HudPanel>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {/* Controls hint — shown for 2s when entering world, then fades out */}
+              <WorldControlsHint active={activeTab === "world"} />
 
-              {/* ── BOTTOM STATUS BAR ── */}
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center gap-6 lg:hidden"
-              >
-                {/* Mobile: show headline + CTA */}
-                <div className="text-center">
-                  <div className="text-lg font-black text-foreground leading-tight">How much code</div>
-                  <div className="text-primary terminal-glow font-black text-lg min-h-[1.3em]">
-                    {twDisplayed}<span className="animate-pulse">█</span>
-                  </div>
-                  <div className="flex gap-2 mt-3 justify-center">
-                    <button
-                      onClick={() => { setActiveTab("scan"); inputRef.current?.focus(); }}
-                      className="px-6 py-2.5 bg-primary text-primary-foreground text-xs font-black tracking-widest hover:bg-primary/90 transition-all"
-                      style={{ boxShadow: "0 0 20px rgba(0,255,65,0.3)" }}
-                    >
-                      START SCAN →
-                    </button>
-                    <button
-                      onClick={() => setActiveTab("world")}
-                      className="px-3 py-2.5 text-xs font-black border border-primary/40 text-primary hover:bg-primary/10 transition-all"
-                    >
-                      <Globe size={14} />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* ── COORDINATE DISPLAY (decorative) ── */}
+              {/* ── COORDINATE DISPLAY (decorative) — desktop only ── */}
               <div className="absolute bottom-4 left-6 z-20 text-[9px] text-muted-foreground/20 font-mono hidden lg:block">
                 <div>SYS: ONLINE</div>
                 <div>NODES: {codeWorldUsers.length}</div>
                 <div>MODE: LIVE</div>
               </div>
 
-              {/* ── SCROLL HINT (non-world) ── */}
+              {/* ── SCROLL HINT (non-world) — desktop only ── */}
               {activeTab !== "world" && (
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -933,36 +909,61 @@ export default function Landing() {
                 </motion.div>
               )}
 
-              {/* ── WORLD MODE: EXIT BUTTON at bottom ── */}
+              {/* ── WORLD MODE: EXIT BUTTON + INFO BAR stacked at bottom ── */}
               <AnimatePresence>
                 {activeTab === "world" && (
                   <motion.div
-                    key="world-exit"
+                    key="world-bottom-stack"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 20 }}
                     transition={{ duration: 0.3, delay: 0.2 }}
-                    className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2"
+                    className="absolute bottom-0 left-0 right-0 z-30 flex flex-col items-center"
                   >
-                    <div className="text-[10px] font-mono tracking-[0.25em] font-bold" style={{ color: "rgba(0,255,65,0.6)", textShadow: "0 0 8px rgba(0,255,65,0.4)" }}>DRAG · SCROLL TO ZOOM</div>
+                    {/* Exit button floats just above the info bar */}
                     <button
                       onClick={() => {
                         setActiveTab("scan");
                         document.body.style.overflow = "";
                         featuresRef.current?.scrollIntoView({ behavior: "smooth" });
                       }}
-                      className="flex items-center gap-2 px-6 py-3 text-sm font-mono font-black tracking-widest transition-all"
+                      className="mb-0 flex items-center gap-1 px-3 py-1.5 text-[10px] font-mono font-bold tracking-widest transition-all"
                       style={{
                         background: "rgba(0, 20, 8, 0.95)",
-                        border: "2px solid #00ff41",
-                        color: "#00ff41",
-                        boxShadow: "0 0 0 1px rgba(0,255,65,0.2), 0 0 24px rgba(0,255,65,0.4), 0 4px 20px rgba(0,0,0,0.8)",
-                        textShadow: "0 0 8px rgba(0,255,65,0.6)",
+                        border: "1px solid rgba(0,255,65,0.5)",
+                        borderBottom: "none",
+                        color: "rgba(0,255,65,0.85)",
+                        boxShadow: "0 -4px 12px rgba(0,255,65,0.15)",
                       }}
+                      title="Exit World"
                     >
-                      <ChevronDown size={14} className="animate-bounce" />
-                      EXIT WORLD ↓
+                      <ChevronDown size={11} />
+                      ↓ EXIT
                     </button>
+                    {/* Info bar — closeable */}
+                    <AnimatePresence>
+                      {!worldPanelHidden && (
+                        <motion.div
+                          key="world-info-bar"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="w-full flex items-center justify-center gap-3 px-4 py-2"
+                          style={{ background: "rgba(0,10,4,0.88)", backdropFilter: "blur(10px)", borderTop: "1px solid rgba(0,255,65,0.2)" }}
+                        >
+                          <span className="text-[11px] text-center font-mono flex-1" style={{ color: "rgba(0,255,65,0.75)" }}>
+                            Each building represents a developer. Height = total LOC. Colors = primary language. Rotate and explore the city.
+                          </span>
+                          <button
+                            onClick={() => setWorldPanelHidden(true)}
+                            className="shrink-0 w-5 h-5 flex items-center justify-center text-[10px] font-bold transition-colors hover:text-primary"
+                            style={{ color: "rgba(0,255,65,0.35)" }}
+                            title="Dismiss"
+                          >✕</button>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -974,8 +975,8 @@ export default function Landing() {
             <div ref={featuresRef}>
 
               {/* ── TICKER BAR ── */}
-              <div className="border-y border-border bg-card/20 overflow-hidden">
-                <div className="flex items-center divide-x divide-border">
+              <div className="border-y border-border bg-card/20 overflow-x-auto">
+                <div className="flex items-center divide-x divide-border min-w-max sm:min-w-0 sm:flex-wrap">
                   {[
                     { v: "100%", l: "File-level accuracy" },
                     { v: "30s", l: "Average scan time" },
@@ -986,89 +987,57 @@ export default function Landing() {
                   ].map((s, i) => (
                     <motion.div key={s.l}
                       initial={{ opacity: 0, y: 6 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }}
-                      className="flex-1 text-center py-5 px-4 min-w-[120px]">
-                      <div className="text-xl font-black text-primary terminal-glow">{s.v}</div>
-                      <div className="text-[10px] text-muted-foreground mt-0.5 tracking-wide">{s.l}</div>
+                      className="flex-1 text-center py-4 px-4 min-w-[100px]">
+                      <div className="text-lg sm:text-xl font-black text-primary terminal-glow">{s.v}</div>
+                      <div className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 tracking-wide">{s.l}</div>
                     </motion.div>
                   ))}
                 </div>
               </div>
 
-              {/* ── FEATURES — asymmetric grid ── */}
+              {/* ── FEATURES ── */}
               <section className="border-b border-border">
-                <div className="max-w-6xl mx-auto px-6 py-20">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
                   <motion.div initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                    className="mb-12">
+                    className="mb-8 sm:mb-12">
                     <div className="text-[10px] text-primary/50 tracking-[0.3em] mb-2">// CAPABILITIES</div>
-                    <h2 className="text-3xl md:text-4xl font-black text-foreground">
+                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-foreground">
                       Everything you need to<br />
                       <span className="text-primary terminal-glow">understand your code.</span>
                     </h2>
                   </motion.div>
 
-                  {/* Asymmetric: 1 large + 5 small */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-border/30">
-                    {/* Large feature */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                      className="md:col-span-1 md:row-span-2 bg-card p-8 flex flex-col justify-between group hover:bg-muted/20 transition-colors"
-                    >
-                      <div>
-                        <div className="w-10 h-10 border border-primary/30 flex items-center justify-center mb-6 group-hover:border-primary/60 transition-colors">
-                          <BarChart3 size={18} className="text-primary" />
-                        </div>
-                        <div className="text-[10px] text-primary/40 tracking-widest mb-2">01</div>
-                        <h3 className="text-lg font-black text-foreground mb-3">Real Line Counts</h3>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          File-level parsing across every repository. Code, comments, and blanks — all separated and attributed to the correct language.
-                          No estimates. No shortcuts.
-                        </p>
-                      </div>
-                      <div className="mt-8 pt-6 border-t border-border/40">
-                        <div className="text-[10px] text-muted-foreground/40 tracking-wide">ACCURACY LEVEL</div>
-                        <div className="flex items-center gap-1 mt-2">
-                          {[...Array(10)].map((_, i) => (
-                            <div key={i} className={`h-1.5 flex-1 ${i < 9 ? "bg-primary" : "bg-primary/30"}`}
-                              style={{ boxShadow: i < 9 ? "0 0 4px rgba(0,255,65,0.5)" : "none" }} />
-                          ))}
-                        </div>
-                        <div className="text-primary text-xs font-bold mt-1">98% accurate</div>
-                      </div>
-                    </motion.div>
-
-                    {/* 5 smaller features */}
-                    {FEATURES.slice(1).map((f, i) => (
-                      <motion.div key={f.title}
-                        initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.07 }}
-                        className="bg-card p-6 group hover:bg-muted/20 transition-colors">
-                        <div className="flex items-start gap-4">
-                          <div className="w-8 h-8 border border-border/60 flex items-center justify-center shrink-0 group-hover:border-primary/40 transition-colors mt-0.5">
-                            <f.icon size={14} className="text-primary/70 group-hover:text-primary transition-colors" />
-                          </div>
-                          <div>
-                            <div className="text-[9px] text-primary/30 tracking-widest mb-1">0{i + 2}</div>
-                            <h3 className="text-sm font-bold text-foreground mb-1.5">{f.title}</h3>
-                            <p className="text-xs text-muted-foreground leading-relaxed">{f.desc}</p>
-                          </div>
-                        </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-px bg-border/30">
+                    {/* Large feature — first one spans full width on mobile */}
+                    {FEATURES.map((f, i) => (
+                      <motion.div
+                        key={f.title}
+                        initial={{ opacity: 0, y: 10 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: i * 0.07 }}
+                        className={`bg-background p-6 sm:p-8 ${i === 0 ? "sm:col-span-2 md:col-span-1" : ""}`}
+                      >
+                        <f.icon size={20} className="text-primary mb-4 opacity-70" />
+                        <h3 className="text-sm font-bold text-foreground mb-2">{f.title}</h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{f.desc}</p>
                       </motion.div>
                     ))}
                   </div>
                 </div>
               </section>
 
-              {/* ── HOW IT WORKS — horizontal timeline ── */}
-              <section className="border-b border-border bg-card/10">
-                <div className="max-w-6xl mx-auto px-6 py-20">
-                  <motion.div initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-12">
+              {/* ── HOW IT WORKS ── */}
+              <section className="border-b border-border">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+                  <motion.div initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-8 sm:mb-12">
                     <div className="text-[10px] text-primary/50 tracking-[0.3em] mb-2">// PROCESS</div>
-                    <h2 className="text-3xl font-black text-foreground">Three steps.<br /><span className="text-primary terminal-glow">Thirty seconds.</span></h2>
+                    <h2 className="text-2xl sm:text-3xl font-black text-foreground">Three steps.<br /><span className="text-primary terminal-glow">Thirty seconds.</span></h2>
                   </motion.div>
 
                   <div className="relative">
-                    {/* Connecting line */}
                     <div className="hidden md:block absolute top-8 left-0 right-0 h-px bg-border/60" />
-                    <div className="grid md:grid-cols-3 gap-8">
+                    <div className="grid sm:grid-cols-3 gap-6 sm:gap-8">
                       {[
                         { n: "01", title: "Enter a username", body: "Any public GitHub handle. Optionally add a personal access token for higher rate limits and private repo access." },
                         { n: "02", title: "Deep repository scan", body: "We fetch every repo, traverse every file tree, and count real lines — split into code, comments, and blanks per language." },
@@ -1077,8 +1046,8 @@ export default function Landing() {
                         <motion.div key={item.n}
                           initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}
                           className="relative">
-                          <div className="w-16 h-16 border border-border bg-background flex items-center justify-center mb-6 relative z-10">
-                            <span className="text-primary font-black text-lg terminal-glow">{item.n}</span>
+                          <div className="w-12 h-12 sm:w-16 sm:h-16 border border-border bg-background flex items-center justify-center mb-4 sm:mb-6 relative z-10">
+                            <span className="text-primary font-black text-base sm:text-lg terminal-glow">{item.n}</span>
                           </div>
                           <h3 className="text-sm font-bold text-foreground mb-2">{item.title}</h3>
                           <p className="text-xs text-muted-foreground leading-relaxed">{item.body}</p>
@@ -1091,20 +1060,20 @@ export default function Landing() {
 
               {/* ── CTA ── */}
               <section className="border-b border-border">
-                <div className="max-w-6xl mx-auto px-6 py-24">
-                  <div className="grid md:grid-cols-2 gap-12 items-center">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
+                  <div className="grid md:grid-cols-2 gap-8 sm:gap-12 items-center">
                     <motion.div initial={{ opacity: 0, x: -16 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
                       <div className="text-[10px] text-primary/50 tracking-[0.3em] mb-3">// START NOW</div>
-                      <h2 className="text-4xl md:text-5xl font-black text-foreground mb-4">
+                      <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-foreground mb-4">
                         Ready to see your<br />
                         <span className="text-primary terminal-glow">line count?</span>
                       </h2>
-                      <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
+                      <p className="text-sm text-muted-foreground mb-6 sm:mb-8 leading-relaxed">
                         Takes under 30 seconds. No account required.<br />Just your GitHub username.
                       </p>
                       <button
                         onClick={() => { window.scrollTo({ top: 0, behavior: "smooth" }); setTimeout(() => { setActiveTab("scan"); inputRef.current?.focus(); }, 600); }}
-                        className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-8 py-4 text-sm font-black hover:bg-primary/90 transition-all tracking-widest"
+                        className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 sm:px-8 py-3 sm:py-4 text-sm font-black hover:bg-primary/90 transition-all tracking-widest"
                         style={{ boxShadow: "0 0 30px rgba(0,255,65,0.25)" }}
                       >
                         <Github size={16} />
@@ -1119,7 +1088,7 @@ export default function Landing() {
                         { icon: TrendingUp, label: "Global ranking", sub: "See your percentile among all developers" },
                         { icon: Globe, label: "Shareable report", sub: "Share your code stats with a unique URL" },
                       ].map((item) => (
-                        <div key={item.label} className="flex items-center gap-4 p-4 border border-border/40 bg-card/30 hover:border-primary/30 transition-colors">
+                        <div key={item.label} className="flex items-center gap-4 p-3 sm:p-4 border border-border/40 bg-card/30 hover:border-primary/30 transition-colors">
                           <div className="w-8 h-8 border border-border/60 flex items-center justify-center shrink-0">
                             <item.icon size={14} className="text-primary/60" />
                           </div>
@@ -1136,18 +1105,18 @@ export default function Landing() {
 
               {/* ── FOOTER ── */}
               <footer className="border-t border-border">
-                <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground/30">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-xs text-muted-foreground/30">
                   <div className="flex items-center gap-3">
                     <img src="/assets/gitm0n.jpg" alt="GITM0N" className="h-5 w-5 rounded object-cover opacity-60" />
                     <span className="text-primary/60 font-black tracking-widest">GITM0N</span>
-                    <span>GitHub Code Monitor</span>
+                    <span className="hidden sm:inline">GitHub Code Monitor</span>
                     <span className="border border-border/30 px-1.5 py-0.5">v2.4.1</span>
                   </div>
-                  <div className="flex flex-wrap justify-center gap-x-4 gap-y-1">
+                  <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px]">
                     <span>Results cached 1 hour</span>
-                    <span>·</span>
+                    <span className="hidden sm:inline">·</span>
                     <span>Public repos by default</span>
-                    <span>·</span>
+                    <span className="hidden sm:inline">·</span>
                     <span>No data stored without scan</span>
                   </div>
                 </div>
