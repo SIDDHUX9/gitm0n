@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState, useEffect, forwardRef, useImperativeHandle, Component } from "react";
+import { useRef, useMemo, useState, useEffect, forwardRef, useImperativeHandle, Component, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Text, Stars, Float } from "@react-three/drei";
 import * as THREE from "three";
@@ -486,6 +486,34 @@ function Building({
   );
 }
 
+// Grid layout: places N items on an expanding square grid sorted by
+// Manhattan distance from center. The most prominent user is at center,
+// and the grid grows outward symmetrically as users are added.
+function gridPositions(n: number, spacing: number): [number, number, number][] {
+  if (n === 0) return [];
+  // Smallest odd grid size that fits all users
+  const gridSize = Math.ceil(Math.sqrt(n));
+  const gs = gridSize % 2 === 0 ? gridSize + 1 : gridSize;
+  const half = Math.floor(gs / 2);
+
+  // Build all cells sorted by Manhattan distance from center (closest first)
+  const cells: [number, number][] = [];
+  for (let row = -half; row <= half; row++) {
+    for (let col = -half; col <= half; col++) {
+      cells.push([col, row]);
+    }
+  }
+  cells.sort((a, b) => {
+    const da = Math.abs(a[0]) + Math.abs(a[1]);
+    const db = Math.abs(b[0]) + Math.abs(b[1]);
+    if (da !== db) return da - db;
+    if (a[1] !== b[1]) return a[1] - b[1];
+    return a[0] - b[0];
+  });
+
+  return cells.slice(0, n).map(([col, row]) => [col * spacing, 0, row * spacing]);
+}
+
 function UserBase({
   user,
   position,
@@ -694,17 +722,59 @@ function WorldScene({
   users,
   currentUsername,
   onSelectUser,
+  flyToRef,
 }: {
   users: WorldUser[];
   currentUsername?: string;
   onSelectUser: (username: string) => void;
+  flyToRef: React.MutableRefObject<((pos: [number, number, number]) => void) | null>;
 }) {
   const { camera } = useThree();
+  const orbitRef = useRef<any>(null);
+  const flyTarget = useRef<{ pos: THREE.Vector3; target: THREE.Vector3 } | null>(null);
+  const isFlyingRef = useRef(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
     camera.position.set(0, 22, 36);
     camera.lookAt(0, 0, 0);
   }, [camera]);
+
+  // Expose flyTo function
+  useEffect(() => {
+    flyToRef.current = (pos: [number, number, number]) => {
+      const target = new THREE.Vector3(pos[0], 0, pos[2]);
+      const camPos = new THREE.Vector3(pos[0], 18, pos[2] + 28);
+      flyTarget.current = { pos: camPos, target };
+      isFlyingRef.current = true;
+      // Mark as interacted so autoRotate prop stays false permanently
+      setHasInteracted(true);
+    };
+  }, [flyToRef]);
+
+  useFrame(() => {
+    if (!isFlyingRef.current || !flyTarget.current) return;
+    const { pos, target } = flyTarget.current;
+    camera.position.lerp(pos, 0.06);
+    if (orbitRef.current) {
+      orbitRef.current.target.lerp(target, 0.06);
+      orbitRef.current.update();
+    }
+    if (camera.position.distanceTo(pos) < 0.5) {
+      isFlyingRef.current = false;
+      flyTarget.current = null;
+    }
+  });
+
+  // Spacing scales with user count so the world expands
+  const SPACING = useMemo(() => {
+    const n = users.length;
+    if (n <= 20) return 16;
+    if (n <= 50) return 18;
+    if (n <= 100) return 20;
+    if (n <= 200) return 22;
+    return 24;
+  }, [users.length]);
 
   const userPositions = useMemo(() => {
     const sorted = [...users].sort((a, b) => {
@@ -713,42 +783,21 @@ function WorldScene({
       return b.totalLines - a.totalLines;
     });
 
-    const SPACING = 16;
-    const positions: { user: WorldUser; position: [number, number, number] }[] = [];
+    const rawPositions = gridPositions(sorted.length, SPACING);
+    return sorted.map((user, i) => ({
+      user,
+      position: rawPositions[i] ?? ([i * SPACING, 0, 0] as [number, number, number]),
+    }));
+  }, [users, currentUsername, SPACING]);
 
-    // N×N grid layout expanding equally in all directions from center.
-    // For N users, compute the smallest odd grid size that fits them all.
-    // Center cell = most prominent user; remaining cells fill outward in
-    // reading order (row by row, left-to-right, top-to-bottom).
-    const n = sorted.length;
-    const gridSize = Math.ceil(Math.sqrt(n)); // e.g. 12 users → 4×4 grid
-    // Make gridSize odd so there is a true center cell
-    const gs = gridSize % 2 === 0 ? gridSize + 1 : gridSize;
-    const half = Math.floor(gs / 2); // e.g. gs=5 → half=2
-
-    // Build all grid cells sorted by Manhattan distance from center,
-    // then by row then col so the layout is deterministic and symmetric.
-    const cells: [number, number][] = [];
-    for (let row = -half; row <= half; row++) {
-      for (let col = -half; col <= half; col++) {
-        cells.push([col, row]);
-      }
-    }
-    cells.sort((a, b) => {
-      const da = Math.abs(a[0]) + Math.abs(a[1]);
-      const db = Math.abs(b[0]) + Math.abs(b[1]);
-      if (da !== db) return da - db;
-      if (a[1] !== b[1]) return a[1] - b[1];
-      return a[0] - b[0];
-    });
-
-    sorted.forEach((user, i) => {
-      const [col, row] = cells[i] ?? [i, 0];
-      positions.push({ user, position: [col * SPACING, 0, row * SPACING] });
-    });
-
-    return positions;
-  }, [users, currentUsername]);
+  // Ground size scales tightly with the actual grid footprint
+  const groundSize = useMemo(() => {
+    const n = users.length;
+    const gs = Math.ceil(Math.sqrt(n));
+    const oddGs = gs % 2 === 0 ? gs + 1 : gs;
+    // Grid spans oddGs cells; add 2 cells of padding on each side
+    return Math.max(80, (oddGs + 4) * SPACING);
+  }, [users.length, SPACING]);
 
   return (
     <>
@@ -758,18 +807,17 @@ function WorldScene({
       <directionalLight position={[-15, 15, -15]} intensity={0.8} color="#6688ff" />
       <directionalLight position={[0, 3, 25]} intensity={1.0} color="#ffffff" />
       <directionalLight position={[0, 3, -25]} intensity={0.6} color="#aaccff" />
-      <pointLight position={[0, 20, 0]} intensity={1.5} color="#ffffff" distance={80} />
-      <Stars radius={120} depth={60} count={3000} factor={4} saturation={0} fade speed={0.5} />
+      <pointLight position={[0, 20, 0]} intensity={1.5} color="#ffffff" distance={120} />
+      <Stars radius={200} depth={80} count={5000} factor={4} saturation={0} fade speed={0.5} />
 
-      {/* City ground base — large dark plane */}
+      {/* City ground base */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.36, 0]} receiveShadow>
-        <planeGeometry args={[400, 400]} />
+        <planeGeometry args={[groundSize, groundSize]} />
         <meshStandardMaterial color="#050510" roughness={0.95} metalness={0.05} />
       </mesh>
       {/* City grid overlay */}
-      <gridHelper args={[200, 80, "#001a0d", "#000d06"]} position={[0, -0.34, 0]} />
-      {/* Secondary finer grid */}
-      <gridHelper args={[200, 200, "#001208", "#000a04"]} position={[0, -0.33, 0]} />
+      <gridHelper args={[groundSize, Math.floor(groundSize / 5), "#001a0d", "#000d06"]} position={[0, -0.34, 0]} />
+      <gridHelper args={[groundSize, Math.floor(groundSize / 2), "#001208", "#000a04"]} position={[0, -0.33, 0]} />
 
       {userPositions.map(({ user, position }) => (
         <UserBase
@@ -781,7 +829,23 @@ function WorldScene({
           onClick={() => onSelectUser(user.username)}
         />
       ))}
-      <fog attach="fog" args={["#030308", 70, 140]} />
+
+      <OrbitControls
+        ref={orbitRef}
+        enablePan={true}
+        panSpeed={1.2}
+        minDistance={8}
+        maxDistance={300}
+        maxPolarAngle={Math.PI / 2.05}
+        autoRotate={!hasInteracted}
+        autoRotateSpeed={0.3}
+        zoomToCursor
+        onStart={() => {
+          setHasInteracted(true);
+        }}
+      />
+
+      <fog attach="fog" args={["#030308", 120, 280]} />
     </>
   );
 }
@@ -800,6 +864,10 @@ export default forwardRef<CodeWorldHandle, {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const flyToRef = useRef<((pos: [number, number, number]) => void) | null>(null);
+
+  // Keep a ref to user positions so searchUser can fly to them
+  const userPositionsRef = useRef<Map<string, [number, number, number]>>(new Map());
 
   const handleSelectUser = (username: string | null) => {
     setSelectedUser(username);
@@ -822,18 +890,40 @@ export default forwardRef<CodeWorldHandle, {
 
   const allUsers = useMemo(() => {
     const map = new Map<string, WorldUser>();
-    if (currentUser) map.set(currentUser.username, currentUser);
+    if (currentUser && currentUser.totalLines > 0) map.set(currentUser.username, currentUser);
     for (const u of leaderboardUsers) {
-      if (!map.has(u.username)) map.set(u.username, u);
+      if (u.totalLines > 0 && !map.has(u.username)) map.set(u.username, u);
     }
-    return Array.from(map.values()).slice(0, 12);
+    return Array.from(map.values());
   }, [currentUser, leaderboardUsers]);
+
+  // Recompute positions mirror for fly-to (same spiral logic)
+  useEffect(() => {
+    const SPACING = allUsers.length <= 20 ? 16 : allUsers.length <= 50 ? 18 : allUsers.length <= 100 ? 20 : allUsers.length <= 200 ? 22 : 24;
+    const sorted = [...allUsers].sort((a, b) => {
+      if (a.username === currentUser?.username) return -1;
+      if (b.username === currentUser?.username) return 1;
+      return b.totalLines - a.totalLines;
+    });
+    const rawPositions = gridPositions(sorted.length, SPACING);
+    const newMap = new Map<string, [number, number, number]>();
+    sorted.forEach((u, i) => {
+      newMap.set(u.username, rawPositions[i] ?? [i * SPACING, 0, 0]);
+    });
+    userPositionsRef.current = newMap;
+  }, [allUsers, currentUser]);
 
   useImperativeHandle(ref, () => ({
     toggleFullscreen,
     searchUser: (username: string) => {
       const match = allUsers.find((u) => u.username.toLowerCase() === username.toLowerCase());
-      if (match) handleSelectUser(match.username);
+      if (match) {
+        handleSelectUser(match.username);
+        const pos = userPositionsRef.current.get(match.username);
+        if (pos && flyToRef.current) {
+          flyToRef.current(pos);
+        }
+      }
     },
     allUsers,
   }));
@@ -933,7 +1023,7 @@ export default forwardRef<CodeWorldHandle, {
       {/* 3D Canvas */}
       <Canvas
         shadows
-        camera={{ position: [0, 20, 32], fov: 55 }}
+        camera={{ position: [0, 22, 36], fov: 55 }}
         style={{ background: "#030308", width: "100%", height: "100%" }}
         gl={{ antialias: true, alpha: false }}
       >
@@ -941,14 +1031,7 @@ export default forwardRef<CodeWorldHandle, {
           users={allUsers}
           currentUsername={currentUser?.username}
           onSelectUser={(u) => handleSelectUser(selectedUser === u ? null : u)}
-        />
-        <OrbitControls
-          enablePan={false}
-          minDistance={10}
-          maxDistance={70}
-          maxPolarAngle={Math.PI / 2.1}
-          autoRotate
-          autoRotateSpeed={0.4}
+          flyToRef={flyToRef}
         />
       </Canvas>
 
@@ -964,6 +1047,11 @@ export default forwardRef<CodeWorldHandle, {
           ))}
         </div>
       )}
+
+      {/* User count badge */}
+      <div className="absolute top-4 right-4 z-10 bg-black/70 border border-primary/30 px-2 py-1 text-xs font-mono text-primary">
+        {allUsers.length} BASES
+      </div>
     </div>
   );
 });

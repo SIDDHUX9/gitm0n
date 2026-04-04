@@ -113,10 +113,9 @@ export const getLeaderboardPublic = query({
     const analyses = await ctx.db
       .query("githubAnalyses")
       .order("desc")
-      .take(100);
+      .take(1000);
     return analyses
       .sort((a, b) => b.totalLines - a.totalLines)
-      .slice(0, 20)
       .map((a, i) => ({
         rank: i + 1,
         username: a.username,

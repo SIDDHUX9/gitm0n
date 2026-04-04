@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import AnalysisDashboard from "@/components/AnalysisDashboard";
 import CodeWorld, { type CodeWorldHandle } from "@/components/CodeWorld";
 import Leaderboard from "@/components/Leaderboard";
-import { Github, BarChart3, Globe, Zap, Lock, TrendingUp, ChevronDown, Users, Code2, Activity, Maximize2, Minimize2, Search, Linkedin, ExternalLink } from "lucide-react";
+import { Github, BarChart3, Globe, Zap, Lock, TrendingUp, ChevronDown, Users, Code2, Activity, Maximize2, Minimize2, Search, Linkedin, ExternalLink, Download } from "lucide-react";
+import { Link } from "react-router";
 
 const CREATOR_USERNAME = "SIDDHUX9";
 
@@ -438,7 +439,12 @@ export default function Landing() {
                     </a>
                   ))}
                 </div>
-                <div className="flex gap-1.5 text-xs">
+                <div className="flex gap-1.5 text-xs items-center">
+                  <Link to="/download"
+                    className="hidden sm:flex items-center gap-1 text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/50 px-2 py-1.5 transition-all text-[10px]">
+                    <Download size={10} />
+                    CLI
+                  </Link>
                   <button onClick={handleForceRefresh} disabled={isAnalyzing}
                     className="text-muted-foreground hover:text-primary border border-border hover:border-primary/50 px-2 py-1.5 transition-all disabled:opacity-40 text-[10px]">
                     RESCAN
@@ -606,6 +612,13 @@ export default function Landing() {
                       <s.icon size={13} />
                     </a>
                   ))}
+                  {/* CLI download link */}
+                  <Link to="/download"
+                    className="hidden sm:flex items-center gap-1 px-2 py-1.5 text-[9px] tracking-widest border border-primary/30 text-primary/70 hover:text-primary hover:border-primary/60 hover:bg-primary/5 transition-all backdrop-blur-sm ml-1"
+                  >
+                    <Download size={9} />
+                    CLI
+                  </Link>
                   {/* Keyboard hint — desktop only */}
                   <div className="hidden lg:flex items-center gap-1 ml-2 text-[9px] text-muted-foreground/25 font-mono">
                     <kbd className="border border-border/30 px-1 py-0.5 rounded-sm">/</kbd>
