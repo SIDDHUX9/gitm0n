@@ -189,7 +189,7 @@ export const analyzeUser = action({
     const repoResults: RepoResult[] = [];
 
     // Process repositories in chunks to avoid secondary rate limits while speeding up the action
-    const CHUNK_SIZE = 5;
+    const CHUNK_SIZE = 25;
     for (let i = 0; i < reposToAnalyze.length; i += CHUNK_SIZE) {
       const chunk = reposToAnalyze.slice(i, i + CHUNK_SIZE);
       const chunkResults = await Promise.all(
