@@ -52,14 +52,11 @@ async function fetchGitHub(url: string, token?: string): Promise<any> {
     Accept: "application/vnd.github.v3+json",
     "User-Agent": "GITM0N/2.4",
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token) headers["Authorization"] = `token ${token}`;
 
   const res = await fetch(url, { headers });
 
   if (!res.ok) {
-    if (res.status === 401) {
-      throw new Error("GITHUB_TOKEN_INVALID: The provided GitHub token is invalid or expired. Please check your Convex environment variables or the provided token.");
-    }
     if (res.status === 403) {
       // Check if it's a rate limit vs auth issue
       const remaining = res.headers.get("x-ratelimit-remaining");
@@ -85,13 +82,13 @@ async function fetchContributorStats(
   targetLogin: string,
   token?: string
 ): Promise<{ additions: number; deletions: number } | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const headers: Record<string, string> = {
         Accept: "application/vnd.github.v3+json",
         "User-Agent": "GITM0N/2.4",
       };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (token) headers["Authorization"] = `token ${token}`;
 
       const res = await fetch(
         `https://api.github.com/repos/${owner}/${repoName}/stats/contributors`,
@@ -99,7 +96,7 @@ async function fetchContributorStats(
       );
 
       if (res.status === 202) {
-        await new Promise((r) => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
       if (res.status === 204 || res.status === 404 || res.status === 409) return null;
@@ -182,71 +179,65 @@ export const analyzeUser = action({
     const ownRepos = allRepos.filter((r: any) => !r.fork);
     ownRepos.sort((a: any, b: any) => (b.size || 0) - (a.size || 0));
 
-    // With a token: analyze up to 100 repos; without: limit to 40 to stay within rate limits
-    const maxRepos = token ? 100 : 40;
+    // With a token: analyze up to 50 repos; without: limit to 30 to stay within rate limits
+    const maxRepos = token ? 50 : 30;
     const reposToAnalyze = ownRepos.slice(0, maxRepos);
 
     const repoResults: RepoResult[] = [];
 
-    // Process repositories in chunks to avoid secondary rate limits while speeding up the action
-    const CHUNK_SIZE = 25;
-    for (let i = 0; i < reposToAnalyze.length; i += CHUNK_SIZE) {
-      const chunk = reposToAnalyze.slice(i, i + CHUNK_SIZE);
-      const chunkResults = await Promise.all(
-        chunk.map(async (repo) => {
-          const repoName = repo.name;
-          const result: RepoResult = {
-            name: repoName,
-            url: repo.html_url,
-            description: repo.description || undefined,
-            language: repo.language || undefined,
-            stars: repo.stargazers_count || 0,
-            lines: 0,
-            additions: 0,
-            deletions: 0,
-            isForked: false,
-            langBytes: {},
-          };
+    for (const repo of reposToAnalyze) {
+      const repoName = repo.name;
 
-          // Fetch language bytes
-          try {
-            const langs = await fetchGitHub(
-              `https://api.github.com/repos/${username}/${repoName}/languages`,
-              token
-            );
-            if (langs && typeof langs === "object") {
-              result.langBytes = langs as Record<string, number>;
-            }
-          } catch {
-            // ignore
-          }
+      const result: RepoResult = {
+        name: repoName,
+        url: repo.html_url,
+        description: repo.description || undefined,
+        language: repo.language || undefined,
+        stars: repo.stargazers_count || 0,
+        lines: 0,
+        additions: 0,
+        deletions: 0,
+        isForked: false,
+        langBytes: {},
+      };
 
-          // Only fetch contributor stats for repos with meaningful size (> 5KB)
-          const repoSizeKb = repo.size || 0;
-          if (repoSizeKb > 5) {
-            const stats = await fetchContributorStats(username, repoName, username, token);
-            if (stats !== null) {
-              result.additions = stats.additions;
-              result.deletions = stats.deletions;
-              result.lines = Math.max(0, stats.additions - stats.deletions);
-            }
-          }
+      // Fetch language bytes
+      try {
+        const langs = await fetchGitHub(
+          `https://api.github.com/repos/${username}/${repoName}/languages`,
+          token
+        );
+        if (langs && typeof langs === "object") {
+          result.langBytes = langs as Record<string, number>;
+        }
+      } catch {
+        // ignore
+      }
 
-          // Fallback: estimate from language bytes if no contributor stats
-          if (result.lines === 0) {
-            let totalLines = 0;
-            for (const [lang, bytes] of Object.entries(result.langBytes)) {
-              totalLines += bytesToLines(bytes, lang);
-            }
-            result.lines = totalLines;
-            result.additions = totalLines;
-            result.deletions = 0;
-          }
+      // Only fetch contributor stats for repos with meaningful size (> 5KB)
+      // This avoids wasting API calls on empty/tiny repos
+      const repoSizeKb = repo.size || 0;
+      if (repoSizeKb > 5) {
+        const stats = await fetchContributorStats(username, repoName, username, token);
+        if (stats !== null) {
+          result.additions = stats.additions;
+          result.deletions = stats.deletions;
+          result.lines = Math.max(0, stats.additions - stats.deletions);
+        }
+      }
 
-          return result;
-        })
-      );
-      repoResults.push(...chunkResults);
+      // Fallback: estimate from language bytes if no contributor stats
+      if (result.lines === 0) {
+        let totalLines = 0;
+        for (const [lang, bytes] of Object.entries(result.langBytes)) {
+          totalLines += bytesToLines(bytes, lang);
+        }
+        result.lines = totalLines;
+        result.additions = totalLines;
+        result.deletions = 0;
+      }
+
+      repoResults.push(result);
     }
 
     // Aggregate language stats
