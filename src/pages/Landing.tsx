@@ -140,7 +140,7 @@ function WorldControlsHint({ active }: { active: boolean }) {
           className="absolute z-30 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-4 pointer-events-none"
           style={{ background: "rgba(0,10,4,0.7)", backdropFilter: "blur(8px)", border: "1px solid rgba(0,255,65,0.15)", padding: "10px 20px" }}
         >
-          {[["Drag","Rotate"],["Scroll","Zoom"],["Tap","Inspect"],["Esc","Exit"]].map(([k, v]) => (
+          {[["Drag", "Rotate"], ["Scroll", "Zoom"], ["Tap", "Inspect"], ["Esc", "Exit"]].map(([k, v]) => (
             <span key={k} className="text-[10px] font-mono" style={{ color: "rgba(0,255,65,0.5)" }}>
               <span style={{ color: "rgba(0,255,65,0.8)" }}>{k}</span> {v}
             </span>
@@ -247,6 +247,7 @@ export default function Landing() {
 
   const analyzeUser = useAction(api.github.analyzeUser);
   const getAnalysisById = useAction(api.github.getAnalysisById);
+  const getAnalysisByUsername = useAction(api.github.getAnalysisByUsername);
   const realLeaderboard = useQuery(api.githubDb.getLeaderboardPublic);
 
   const codeWorldUsers = (realLeaderboard && realLeaderboard.length > 0) ? realLeaderboard : DEMO_USERS;
@@ -335,12 +336,32 @@ export default function Landing() {
       clearInterval(progressInterval);
       setIsAnalyzing(false);
       setProgress(0);
-      if (err.message?.includes("USER_NOT_FOUND")) toast.error(`User '${target}' not found on GitHub`);
-      else if (err.message?.includes("RATE_LIMIT")) {
-        const resetTime = err.message.split(":")[1];
+      const message = err?.message || "";
+      if (message.includes("Connection lost while action was in flight")) {
+        try {
+          setProgressMsg("Reconnecting to analysis...");
+          const recovered = await getAnalysisByUsername({ username: target.toLowerCase() });
+          if (recovered) {
+            setProgress(100);
+            setProgressMsg("Analysis complete!");
+            setAnalysisData(recovered);
+            const url = new URL(window.location.href);
+            url.searchParams.set("user", target);
+            window.history.pushState({}, "", url.toString());
+            return;
+          }
+        } catch {
+          // fall through to error toast
+        }
+        toast.error("Connection lost. Please try again — the analysis may have completed server-side.");
+        return;
+      }
+      if (message.includes("USER_NOT_FOUND")) toast.error(`User '${target}' not found on GitHub`);
+      else if (message.includes("RATE_LIMIT")) {
+        const resetTime = message.split(":")[1];
         toast.error(`GitHub rate limit hit. Resets at ${resetTime || "soon"}. Add a token in the "+ Token" field for 5,000 req/hr.`, { duration: 8000 });
       }
-      else toast.error(err.message || "Analysis failed");
+      else toast.error(message || "Analysis failed");
       return;
     }
     setIsAnalyzing(false);
@@ -512,15 +533,14 @@ export default function Landing() {
                     { id: "board" as const, label: "BOARD", icon: Users },
                   ].map(({ id, label, icon: Icon }) => (
                     <button key={id} onClick={() => setActiveTab(id)}
-                      className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 text-[9px] sm:text-[10px] tracking-widest transition-all border ${
-                        activeTab === id
+                      className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 text-[9px] sm:text-[10px] tracking-widest transition-all border ${activeTab === id
                           ? id === "world"
                             ? "border-primary text-primary bg-primary/10 backdrop-blur-sm"
                             : "border-primary/60 text-primary bg-background/60 backdrop-blur-sm"
                           : id === "world"
                             ? "border-primary/30 text-primary/70 hover:text-primary hover:border-primary/60 hover:bg-primary/5"
                             : "border-transparent text-muted-foreground hover:text-primary hover:border-border/60"
-                      }`}
+                        }`}
                       style={id === "world" && activeTab !== "world" ? { boxShadow: "0 0 8px rgba(0,255,65,0.15)" } : undefined}
                     >
                       <Icon size={9} />

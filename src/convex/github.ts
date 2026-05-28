@@ -52,11 +52,14 @@ async function fetchGitHub(url: string, token?: string): Promise<any> {
     Accept: "application/vnd.github.v3+json",
     "User-Agent": "GITM0N/2.4",
   };
-  if (token) headers["Authorization"] = `token ${token}`;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(url, { headers });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error("GITHUB_TOKEN_INVALID: The provided GitHub token is invalid or expired. Please check your Convex environment variables or the provided token.");
+    }
     if (res.status === 403) {
       // Check if it's a rate limit vs auth issue
       const remaining = res.headers.get("x-ratelimit-remaining");
@@ -88,7 +91,7 @@ async function fetchContributorStats(
         Accept: "application/vnd.github.v3+json",
         "User-Agent": "GITM0N/2.4",
       };
-      if (token) headers["Authorization"] = `token ${token}`;
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
       const res = await fetch(
         `https://api.github.com/repos/${owner}/${repoName}/stats/contributors`,
