@@ -185,59 +185,67 @@ export const analyzeUser = action({
 
     const repoResults: RepoResult[] = [];
 
-    for (const repo of reposToAnalyze) {
-      const repoName = repo.name;
+    // Process repositories in batches to speed up execution
+    const batchSize = 10;
+    for (let i = 0; i < reposToAnalyze.length; i += batchSize) {
+      const batch = reposToAnalyze.slice(i, i + batchSize);
+      
+      const batchPromises = batch.map(async (repo: any) => {
+        const repoName = repo.name;
 
-      const result: RepoResult = {
-        name: repoName,
-        url: repo.html_url,
-        description: repo.description || undefined,
-        language: repo.language || undefined,
-        stars: repo.stargazers_count || 0,
-        lines: 0,
-        additions: 0,
-        deletions: 0,
-        isForked: false,
-        langBytes: {},
-      };
+        const result: RepoResult = {
+          name: repoName,
+          url: repo.html_url,
+          description: repo.description || undefined,
+          language: repo.language || undefined,
+          stars: repo.stargazers_count || 0,
+          lines: 0,
+          additions: 0,
+          deletions: 0,
+          isForked: false,
+          langBytes: {},
+        };
 
-      // Fetch language bytes
-      try {
-        const langs = await fetchGitHub(
-          `https://api.github.com/repos/${username}/${repoName}/languages`,
-          token
-        );
-        if (langs && typeof langs === "object") {
-          result.langBytes = langs as Record<string, number>;
+        // Fetch language bytes
+        try {
+          const langs = await fetchGitHub(
+            `https://api.github.com/repos/${username}/${repoName}/languages`,
+            token
+          );
+          if (langs && typeof langs === "object") {
+            result.langBytes = langs as Record<string, number>;
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
-      }
 
-      // Only fetch contributor stats for repos with meaningful size (> 5KB)
-      // This avoids wasting API calls on empty/tiny repos
-      const repoSizeKb = repo.size || 0;
-      if (repoSizeKb > 5) {
-        const stats = await fetchContributorStats(username, repoName, username, token);
-        if (stats !== null) {
-          result.additions = stats.additions;
-          result.deletions = stats.deletions;
-          result.lines = Math.max(0, stats.additions - stats.deletions);
+        // Only fetch contributor stats for repos with meaningful size (> 5KB)
+        const repoSizeKb = repo.size || 0;
+        if (repoSizeKb > 5) {
+          const stats = await fetchContributorStats(username, repoName, username, token);
+          if (stats !== null) {
+            result.additions = stats.additions;
+            result.deletions = stats.deletions;
+            result.lines = Math.max(0, stats.additions - stats.deletions);
+          }
         }
-      }
 
-      // Fallback: estimate from language bytes if no contributor stats
-      if (result.lines === 0) {
-        let totalLines = 0;
-        for (const [lang, bytes] of Object.entries(result.langBytes)) {
-          totalLines += bytesToLines(bytes, lang);
+        // Fallback: estimate from language bytes if no contributor stats
+        if (result.lines === 0) {
+          let totalLines = 0;
+          for (const [lang, bytes] of Object.entries(result.langBytes)) {
+            totalLines += bytesToLines(bytes, lang);
+          }
+          result.lines = totalLines;
+          result.additions = totalLines;
+          result.deletions = 0;
         }
-        result.lines = totalLines;
-        result.additions = totalLines;
-        result.deletions = 0;
-      }
 
-      repoResults.push(result);
+        return result;
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      repoResults.push(...batchResults);
     }
 
     // Aggregate language stats
